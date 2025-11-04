@@ -1,6 +1,7 @@
 import React from "react";
 import { CalcResult } from "../lib/calcEngine";
 import { formatYen } from "../lib/format";
+import RateTimelineChart from "./RateTimelineChart";
 
 interface ResultTableProps {
   result: CalcResult | null;
@@ -52,6 +53,11 @@ const ResultTable: React.FC<ResultTableProps> = ({ result }) => {
           ))}
         </tbody>
       </table>
+      <div className="rate-charts">
+        {result.rows.map((row, idx) => (
+          <RateTimelineChart key={idx} row={row} />
+        ))}
+      </div>
       <Notes />
     </section>
   );
