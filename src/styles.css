@@ -1,0 +1,99 @@
+:root {
+  font-family: 'Segoe UI', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+  line-height: 1.5;
+  color: #1f2933;
+  background-color: #f8fafc;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input,
+button {
+  font: inherit;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+}
+
+button {
+  background-color: #2563eb;
+  border: none;
+  color: #fff;
+}
+
+button[type='button'] {
+  background-color: #475569;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.app-note {
+  font-size: 0.9rem;
+  color: #475569;
+  max-width: 480px;
+  text-align: right;
+}
+
+.app-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.form-section {
+  flex: 1 1 320px;
+  min-width: 280px;
+  background-color: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.result-section {
+  flex: 1 1 320px;
+  min-width: 280px;
+  background-color: #fff;
+  padding: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.info-message {
+  margin-top: 12px;
+  color: #0f766e;
+}
+
+@media (max-width: 768px) {
+  .app-note {
+    text-align: left;
+  }
+}
