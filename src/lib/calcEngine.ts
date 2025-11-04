@@ -1,120 +1,182 @@
+import { TAX_RATE, yenFloor } from "./format";
+import {
+  PeriodBlock,
+  normalizePeriods,
+  parseDslToBlocks,
+  Period,
+  monthlySequence,
+} from "./periods";
+
 export type Scenario = {
+  id: string;
   name: string;
   startYm: string;
   initialLump: number;
-  monthlyInvest: number;
+  durationYears: number;
+  mode: "simple" | "builder" | "dsl";
+  monthlyInvest?: number;
   withdrawStartYm?: string;
   monthlyWithdraw?: number;
+  blocks?: PeriodBlock[];
+  dslText?: string;
   ratesPercent: number[];
 };
 
-export type RateResult = {
+export type RateRow = {
   ratePercent: number;
   finalTotal: number;
+  finalNisa: number;
+  finalTaxable: number;
+  profit: number;
+};
+
+export type Summary = {
+  principalTotal: number;
+  nisaPrincipal: number;
+};
+
+export type CalcResult = {
+  summary: Summary;
+  rows: RateRow[];
 };
 
 const NISA_LIMIT = 18_000_000;
-const TAX_RATE = 0.20315;
-const MAX_MONTHS = 480;
 
-export function diffMonths(fromYm: string, toYm: string): number {
-  if (!fromYm || !toYm) {
-    return 0;
-  }
-  const [fromYear, fromMonth] = fromYm.split('-').map((v) => parseInt(v, 10));
-  const [toYear, toMonth] = toYm.split('-').map((v) => parseInt(v, 10));
-  if (
-    Number.isNaN(fromYear) ||
-    Number.isNaN(fromMonth) ||
-    Number.isNaN(toYear) ||
-    Number.isNaN(toMonth)
-  ) {
-    return 0;
-  }
-  return (toYear - fromYear) * 12 + (toMonth - fromMonth);
+export function normalizeRateValue(value: number): number {
+  if (value >= 1) return value / 100;
+  return value;
 }
 
-function calculateMonthlyRate(annualRate: number): number {
-  return Math.pow(1 + annualRate, 1 / 12) - 1;
-}
+export function calcFinalForRate(
+  scenario: Scenario,
+  annualRateInput: number,
+  precomputedPeriods?: { periods: Period[]; durationMonths: number }
+): { finalTotal: number; finalNisa: number; finalTaxable: number; principalTotal: number; nisaPrincipal: number } {
+  const annualRate = normalizeRateValue(annualRateInput);
+  const monthlyRate = Math.pow(1 + annualRate, 1 / 12) - 1;
 
-function allocateToAccounts(
-  amount: number,
-  balNisa: number,
-  balTax: number,
-  nisaUsed: number,
-): { balNisa: number; balTax: number; nisaUsed: number } {
-  const safeAmount = Math.max(0, Math.floor(amount));
-  if (safeAmount <= 0) {
-    return { balNisa, balTax, nisaUsed };
-  }
+  const { periods, durationMonths } =
+    precomputedPeriods ??
+    normalizePeriods(scenario.mode, {
+      durationYears: scenario.durationYears,
+      blocks: scenario.blocks,
+      simpleArgs:
+        scenario.mode === "simple"
+          ? {
+              monthlyInvest: scenario.monthlyInvest ?? 0,
+              monthlyWithdraw: scenario.monthlyWithdraw ?? 0,
+              withdrawStartYm: scenario.withdrawStartYm,
+              startYm: scenario.startYm,
+            }
+          : undefined,
+    });
 
-  const nisaRoom = Math.max(0, NISA_LIMIT - nisaUsed);
-  const investToNisa = Math.min(safeAmount, nisaRoom);
-  const investToTax = safeAmount - investToNisa;
-
-  return {
-    balNisa: Math.floor(balNisa + investToNisa),
-    balTax: Math.floor(balTax + investToTax),
-    nisaUsed: nisaUsed + investToNisa,
-  };
-}
-
-export function calcFinalTotal(scenario: Scenario, annualRate: number): number {
-  const monthlyRate = calculateMonthlyRate(annualRate);
+  const flows = monthlySequence(periods, durationMonths);
 
   let balNisa = 0;
   let balTax = 0;
+  let nisaRemaining = NISA_LIMIT;
   let nisaUsed = 0;
+  let principalTotal = scenario.initialLump;
 
-  ({ balNisa, balTax, nisaUsed } = allocateToAccounts(
-    scenario.initialLump,
-    balNisa,
-    balTax,
-    nisaUsed,
-  ));
+  // 初期元本を反映
+  if (scenario.initialLump > 0) {
+    const toNisa = Math.min(scenario.initialLump, nisaRemaining);
+    balNisa = yenFloor(balNisa + toNisa);
+    nisaRemaining -= toNisa;
+    nisaUsed += toNisa;
+    const toTax = scenario.initialLump - toNisa;
+    balTax = yenFloor(balTax + toTax);
+  }
 
-  const withdrawStartDiff = scenario.withdrawStartYm
-    ? Math.max(0, diffMonths(scenario.startYm, scenario.withdrawStartYm))
-    : Infinity;
+  for (let month = 0; month < durationMonths; month++) {
+    // 月末運用：NISAは非課税
+    balNisa = yenFloor(balNisa * (1 + monthlyRate));
 
-  for (let monthIndex = 0; monthIndex < MAX_MONTHS; monthIndex += 1) {
-    // 月末運用
-    balNisa = Math.floor(balNisa * (1 + monthlyRate));
-
-    if (monthlyRate >= 0) {
-      const gain = Math.floor(balTax * monthlyRate);
-      const tax = Math.floor(gain * TAX_RATE);
-      balTax = Math.floor(balTax + gain - tax);
+    const gain = balTax * monthlyRate;
+    if (gain >= 0) {
+      const taxedGain = gain * (1 - TAX_RATE);
+      balTax = yenFloor(balTax + taxedGain);
     } else {
-      balTax = Math.floor(balTax * (1 + monthlyRate));
+      balTax = yenFloor(balTax + gain);
     }
 
-    // 月末入金
-    ({ balNisa, balTax, nisaUsed } = allocateToAccounts(
-      scenario.monthlyInvest,
-      balNisa,
-      balTax,
-      nisaUsed,
-    ));
-
-    // 取り崩し
-    const isWithdrawPhase = monthIndex >= withdrawStartDiff;
-    const withdrawAmount = isWithdrawPhase
-      ? Math.max(0, Math.floor(scenario.monthlyWithdraw ?? 0))
-      : 0;
-
-    if (withdrawAmount > 0) {
-      const withdrawFromTax = Math.min(balTax, withdrawAmount);
-      balTax = Math.floor(balTax - withdrawFromTax);
-      let remaining = withdrawAmount - withdrawFromTax;
-
-      if (remaining > 0) {
-        const withdrawFromNisa = Math.min(balNisa, remaining);
-        balNisa = Math.floor(balNisa - withdrawFromNisa);
+    const flow = flows[month] ?? 0;
+    if (flow > 0) {
+      const toNisa = Math.min(flow, nisaRemaining);
+      balNisa = yenFloor(balNisa + toNisa);
+      nisaRemaining -= toNisa;
+      nisaUsed += toNisa;
+      const toTax = flow - toNisa;
+      if (toTax > 0) {
+        balTax = yenFloor(balTax + toTax);
+      }
+      principalTotal += flow;
+    } else if (flow < 0) {
+      let remaining = -flow;
+      if (balTax > 0) {
+        const fromTax = Math.min(remaining, balTax);
+        balTax = yenFloor(balTax - fromTax);
+        remaining -= fromTax;
+      }
+      if (remaining > 0 && balNisa > 0) {
+        const fromNisa = Math.min(remaining, balNisa);
+        balNisa = yenFloor(balNisa - fromNisa);
+        remaining -= fromNisa;
       }
     }
   }
 
-  return Math.floor(balNisa + balTax);
+  const finalTotal = balNisa + balTax;
+
+  return {
+    finalTotal: yenFloor(finalTotal),
+    finalNisa: yenFloor(balNisa),
+    finalTaxable: yenFloor(balTax),
+    principalTotal: yenFloor(principalTotal),
+    nisaPrincipal: yenFloor(nisaUsed),
+  };
 }
+
+export function calcAllRates(scenario: Scenario): CalcResult {
+  const precomputed = normalizePeriods(scenario.mode, {
+    durationYears: scenario.durationYears,
+    blocks: scenario.blocks,
+    simpleArgs:
+      scenario.mode === "simple"
+        ? {
+            monthlyInvest: scenario.monthlyInvest ?? 0,
+            monthlyWithdraw: scenario.monthlyWithdraw ?? 0,
+            withdrawStartYm: scenario.withdrawStartYm,
+            startYm: scenario.startYm,
+          }
+        : undefined,
+  });
+
+  const rows: RateRow[] = [];
+  let summary: Summary | undefined;
+
+  scenario.ratesPercent.forEach((rateInput, index) => {
+    const result = calcFinalForRate(scenario, rateInput, precomputed);
+    rows.push({
+      ratePercent: rateInput,
+      finalTotal: result.finalTotal,
+      finalNisa: result.finalNisa,
+      finalTaxable: result.finalTaxable,
+      profit: result.finalTotal - result.principalTotal,
+    });
+    if (index === 0) {
+      summary = {
+        principalTotal: result.principalTotal,
+        nisaPrincipal: result.nisaPrincipal,
+      };
+    }
+  });
+
+  return {
+    summary: summary ?? { principalTotal: 0, nisaPrincipal: 0 },
+    rows,
+  };
+}
+
+export { parseDslToBlocks };

@@ -1,136 +1,171 @@
-import React from 'react';
-import type { Scenario } from '../lib/calcEngine';
+import React from "react";
+import { Scenario, parseDslToBlocks } from "../lib/calcEngine";
+import BlocksEditor from "./BlocksEditor";
+import { PeriodBlock } from "../lib/periods";
 
-export type ScenarioFormProps = {
+interface ScenarioFormProps {
   scenario: Scenario;
-  ratesInput: string;
-  errorMessage?: string | null;
-  onScenarioChange: (scenario: Scenario) => void;
-  onRatesInputChange: (value: string) => void;
-  onCalculate: () => void;
-  onSave: () => void;
-  onLoad: () => void;
-};
+  ratesText: string;
+  dslErrors: string[];
+  ratesValid: boolean;
+  onScenarioFieldChange: (patch: Partial<Scenario>) => void;
+  onRatesTextChange: (text: string) => void;
+  onBlocksChange: (blocks: PeriodBlock[]) => void;
+  onDslChange: (text: string, blocks: PeriodBlock[], errors: string[]) => void;
+}
 
-const labelStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '4px',
-};
-
-const fieldsetStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '12px',
-};
-
-const buttonRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-};
-
-export const ScenarioForm: React.FC<ScenarioFormProps> = ({
+const ScenarioForm: React.FC<ScenarioFormProps> = ({
   scenario,
-  ratesInput,
-  errorMessage,
-  onScenarioChange,
-  onRatesInputChange,
-  onCalculate,
-  onSave,
-  onLoad,
+  ratesText,
+  dslErrors,
+  ratesValid,
+  onScenarioFieldChange,
+  onRatesTextChange,
+  onBlocksChange,
+  onDslChange,
 }) => {
-  const handleChange = <K extends keyof Scenario>(key: K, rawValue: Scenario[K]) => {
-    onScenarioChange({
-      ...scenario,
-      [key]: rawValue,
-    });
+  const change = (field: keyof Scenario, value: any) => {
+    onScenarioFieldChange({ [field]: value } as Partial<Scenario>);
   };
 
-  const handleNumberChange = (key: keyof Scenario) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number(event.target.value);
-    handleChange(key, Number.isNaN(value) ? 0 : (value as Scenario[typeof key]));
+  const handleModeChange = (mode: Scenario["mode"]) => {
+    change("mode", mode);
+  };
+
+  const handleDslChange = (text: string) => {
+    const { blocks, errors } = parseDslToBlocks(text);
+    onDslChange(text, blocks, errors);
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        onCalculate();
-      }}
-      style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-    >
-      <fieldset style={fieldsetStyle}>
-        <label style={labelStyle}>
-          シナリオ名
-          <input
-            type="text"
-            value={scenario.name}
-            onChange={(event) => handleChange('name', event.target.value as Scenario['name'])}
-          />
-        </label>
+    <section className="scenario-form">
+      <h2>入力</h2>
+      <label>
+        <span>シナリオ名</span>
+        <input
+          type="text"
+          value={scenario.name}
+          onChange={(e) => change("name", e.target.value)}
+        />
+      </label>
+      <label>
+        <span>開始年月 (YYYY-MM)</span>
+        <input
+          type="month"
+          value={scenario.startYm}
+          onChange={(e) => change("startYm", e.target.value)}
+        />
+      </label>
+      <label>
+        <span>初期元本 (円)</span>
+        <input
+          type="number"
+          min={0}
+          value={scenario.initialLump}
+          onChange={(e) => change("initialLump", Math.max(0, Number(e.target.value) || 0))}
+        />
+      </label>
+      <label>
+        <span>シミュ期間 (年)</span>
+        <input
+          type="number"
+          min={1}
+          value={scenario.durationYears}
+          onChange={(e) => change("durationYears", Math.max(1, Number(e.target.value) || 1))}
+        />
+      </label>
+      <label>
+        <span>年率リスト</span>
+        <input type="text" value={ratesText} onChange={(e) => onRatesTextChange(e.target.value)} />
+        <small className="hint">例: 3 5 7 10 または 0.03 0.05 など。入力順に計算します。</small>
+        {!ratesValid && <p className="error">数値をスペースまたはカンマ区切りで入力してください。</p>}
+      </label>
 
-        <label style={labelStyle}>
-          開始年月（YYYY-MM）
-          <input
-            type="month"
-            value={scenario.startYm}
-            onChange={(event) => handleChange('startYm', event.target.value as Scenario['startYm'])}
-          />
-        </label>
-
-        <label style={labelStyle}>
-          初期元本（円）
-          <input type="number" min={0} step={1} value={scenario.initialLump} onChange={handleNumberChange('initialLump')} />
-        </label>
-
-        <label style={labelStyle}>
-          毎月の積立額（円）
-          <input type="number" min={0} step={1} value={scenario.monthlyInvest} onChange={handleNumberChange('monthlyInvest')} />
-        </label>
-
-        <label style={labelStyle}>
-          取り崩し開始年月（空欄可）
-          <input
-            type="month"
-            value={scenario.withdrawStartYm ?? ''}
-            onChange={(event) => handleChange('withdrawStartYm', event.target.value as Scenario['withdrawStartYm'])}
-          />
-        </label>
-
-        <label style={labelStyle}>
-          毎月の取り崩し額（円）
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={scenario.monthlyWithdraw ?? 0}
-            onChange={handleNumberChange('monthlyWithdraw')}
-          />
-        </label>
-
-        <label style={labelStyle}>
-          年率リスト（例: 3,5,7）
-          <input
-            type="text"
-            value={ratesInput}
-            onChange={(event) => onRatesInputChange(event.target.value)}
-            placeholder="3,5,7"
-          />
-        </label>
-      </fieldset>
-
-      {errorMessage ? <p style={{ color: 'red' }}>{errorMessage}</p> : null}
-
-      <div style={buttonRowStyle}>
-        <button type="submit">計算する</button>
-        <button type="button" onClick={onSave}>
-          保存
-        </button>
-        <button type="button" onClick={onLoad}>
-          読込
-        </button>
+      <div className="tabs">
+        <div className="tab-headers">
+          <button
+            type="button"
+            className={scenario.mode === "simple" ? "active" : ""}
+            onClick={() => handleModeChange("simple")}
+          >
+            かんたんモード
+          </button>
+          <button
+            type="button"
+            className={scenario.mode === "builder" ? "active" : ""}
+            onClick={() => handleModeChange("builder")}
+          >
+            期間ビルダー
+          </button>
+          <button
+            type="button"
+            className={scenario.mode === "dsl" ? "active" : ""}
+            onClick={() => handleModeChange("dsl")}
+          >
+            テキストDSL
+          </button>
+        </div>
+        <div className="tab-body">
+          {scenario.mode === "simple" && (
+            <div className="tab-panel">
+              <label>
+                <span>毎月積立 (円)</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={scenario.monthlyInvest ?? 0}
+                  onChange={(e) =>
+                    change("monthlyInvest", Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </label>
+              <label>
+                <span>毎月取り崩し (円)</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={scenario.monthlyWithdraw ?? 0}
+                  onChange={(e) =>
+                    change("monthlyWithdraw", Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </label>
+              <label>
+                <span>取り崩し開始年月</span>
+                <input
+                  type="month"
+                  value={scenario.withdrawStartYm ?? ""}
+                  onChange={(e) => change("withdrawStartYm", e.target.value)}
+                />
+              </label>
+            </div>
+          )}
+          {scenario.mode === "builder" && (
+            <div className="tab-panel">
+              <BlocksEditor blocks={scenario.blocks ?? []} onChange={onBlocksChange} />
+            </div>
+          )}
+          {scenario.mode === "dsl" && (
+            <div className="tab-panel">
+              <textarea
+                value={scenario.dslText ?? ""}
+                onChange={(e) => handleDslChange(e.target.value)}
+                rows={12}
+              />
+              {dslErrors.length > 0 ? (
+                <ul className="error-list">
+                  {dslErrors.map((err, idx) => (
+                    <li key={idx}>{err}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="hint">(months, flow) x年数 の形式で入力します。</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </form>
+    </section>
   );
 };
 
