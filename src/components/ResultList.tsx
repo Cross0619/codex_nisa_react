@@ -1,8 +1,8 @@
-import React from 'react';
-import type { RateResult } from '../lib/calcEngine';
+import React from "react";
+import type { RateRow } from "../lib/calcEngine";
 
 type ResultListProps = {
-  results: RateResult[];
+  results: RateRow[];
   formatJPY: (value: number) => string;
 };
 

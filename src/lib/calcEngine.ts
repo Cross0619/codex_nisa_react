@@ -22,12 +22,20 @@ export type Scenario = {
   ratesPercent: number[];
 };
 
+export type RateTimelinePoint = {
+  monthIndex: number;
+  principal: number;
+  profit: number;
+  total: number;
+};
+
 export type RateRow = {
   ratePercent: number;
   finalTotal: number;
   finalNisa: number;
   finalTaxable: number;
   profit: number;
+  timeline: RateTimelinePoint[];
 };
 
 export type Summary = {
@@ -51,7 +59,14 @@ export function calcFinalForRate(
   scenario: Scenario,
   annualRateInput: number,
   precomputedPeriods?: { periods: Period[]; durationMonths: number }
-): { finalTotal: number; finalNisa: number; finalTaxable: number; principalTotal: number; nisaPrincipal: number } {
+): {
+  finalTotal: number;
+  finalNisa: number;
+  finalTaxable: number;
+  principalTotal: number;
+  nisaPrincipal: number;
+  timeline: RateTimelinePoint[];
+} {
   const annualRate = normalizeRateValue(annualRateInput);
   const monthlyRate = Math.pow(1 + annualRate, 1 / 12) - 1;
 
@@ -79,6 +94,17 @@ export function calcFinalForRate(
   let nisaUsed = 0;
   let principalTotal = scenario.initialLump;
 
+  const timeline: RateTimelinePoint[] = [];
+  const pushTimelinePoint = (monthIndex: number) => {
+    const total = yenFloor(balNisa + balTax);
+    timeline.push({
+      monthIndex,
+      principal: yenFloor(principalTotal),
+      profit: yenFloor(total - principalTotal),
+      total,
+    });
+  };
+
   // 初期元本を反映
   if (scenario.initialLump > 0) {
     const toNisa = Math.min(scenario.initialLump, nisaRemaining);
@@ -88,6 +114,8 @@ export function calcFinalForRate(
     const toTax = scenario.initialLump - toNisa;
     balTax = yenFloor(balTax + toTax);
   }
+
+  pushTimelinePoint(0);
 
   for (let month = 0; month < durationMonths; month++) {
     // 月末運用：NISAは非課税
@@ -125,6 +153,8 @@ export function calcFinalForRate(
         remaining -= fromNisa;
       }
     }
+
+    pushTimelinePoint(month + 1);
   }
 
   const finalTotal = balNisa + balTax;
@@ -135,6 +165,7 @@ export function calcFinalForRate(
     finalTaxable: yenFloor(balTax),
     principalTotal: yenFloor(principalTotal),
     nisaPrincipal: yenFloor(nisaUsed),
+    timeline,
   };
 }
 
@@ -164,6 +195,7 @@ export function calcAllRates(scenario: Scenario): CalcResult {
       finalNisa: result.finalNisa,
       finalTaxable: result.finalTaxable,
       profit: result.finalTotal - result.principalTotal,
+      timeline: result.timeline,
     });
     if (index === 0) {
       summary = {
