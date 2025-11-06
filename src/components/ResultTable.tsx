@@ -1,13 +1,16 @@
 import React from "react";
-import { CalcResult } from "../lib/calcEngine";
+import { CalcResult, normalizeRateValue } from "../lib/calcEngine";
 import { formatYen } from "../lib/format";
 import RateTimelineChart from "./RateTimelineChart";
 
 interface ResultTableProps {
   result: CalcResult | null;
+  onOpenDetail: (ratePercent: number) => void;
+  activeRates: number[];
+  startYear: number;
 }
 
-const ResultTable: React.FC<ResultTableProps> = ({ result }) => {
+const ResultTable: React.FC<ResultTableProps> = ({ result, onOpenDetail, activeRates, startYear }) => {
   if (!result) {
     return (
       <section className="result-table">
@@ -42,21 +45,52 @@ const ResultTable: React.FC<ResultTableProps> = ({ result }) => {
           </tr>
         </thead>
         <tbody>
-          {result.rows.map((row, idx) => (
-            <tr key={idx}>
-              <td>{formatRate(row.ratePercent)}</td>
-              <td>{formatYen(row.finalTotal)}</td>
-              <td>{formatYen(row.finalNisa)}</td>
-              <td>{formatYen(row.profit)}</td>
-              <td>{formatYen(row.finalTaxable)}</td>
-            </tr>
-          ))}
+          {result.rows.map((row, idx) => {
+            const displayRate = Math.round(normalizeRateValue(row.ratePercent) * 100);
+            const isActive = activeRates.includes(displayRate);
+            const isDimmed = activeRates.length > 0 && !isActive;
+            return (
+              <tr
+                key={idx}
+                className={`result-row${isActive ? " is-active" : ""}${isDimmed ? " is-dimmed" : ""}`}
+                onClick={() => onOpenDetail(row.ratePercent)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenDetail(row.ratePercent);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`${displayRate}% の内訳を開く`}
+              >
+                <td>
+                  <span className="rate-link">{formatRate(row.ratePercent)}</span>
+                </td>
+                <td>{formatYen(row.finalTotal)}</td>
+                <td>{formatYen(row.finalNisa)}</td>
+                <td>{formatYen(row.profit)}</td>
+                <td>{formatYen(row.finalTaxable)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <div className="rate-charts">
-        {result.rows.map((row, idx) => (
-          <RateTimelineChart key={idx} row={row} />
-        ))}
+        {result.rows.map((row, idx) => {
+          const displayRate = Math.round(normalizeRateValue(row.ratePercent) * 100);
+          const isActive = activeRates.includes(displayRate);
+          const hidden = activeRates.length > 0 && !isActive;
+          return (
+            <RateTimelineChart
+              key={idx}
+              row={row}
+              startYear={startYear}
+              hidden={hidden}
+              highlighted={isActive}
+            />
+          );
+        })}
       </div>
       <Notes />
     </section>
@@ -71,10 +105,8 @@ const Notes: React.FC = () => (
 );
 
 function formatRate(rateInput: number): string {
-  if (rateInput >= 1) {
-    return `${rateInput.toFixed(2)}%`;
-  }
-  return `${(rateInput * 100).toFixed(2)}%`;
+  const normalized = normalizeRateValue(rateInput);
+  return `${Math.round(normalized * 100)}%`;
 }
 
 export default ResultTable;

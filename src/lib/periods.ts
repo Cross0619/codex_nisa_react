@@ -3,6 +3,7 @@ export type Period = { months: number; flow: number };
 export type PeriodBlock = {
   pattern: Period[];
   repeatYears: number;
+  name?: string;
 };
 
 // DSL を PeriodBlock に変換
@@ -17,7 +18,16 @@ export function parseDslToBlocks(dslText: string): { blocks: PeriodBlock[]; erro
 
   lines.forEach((line, idx) => {
     try {
-      const [patternPart, repeatPart] = line.split(/x/i).map((p) => p.trim());
+      let working = line;
+      let name: string | undefined;
+
+      const nameMatch = working.match(/^([^:]+):(.*)$/);
+      if (nameMatch && nameMatch[2].includes("(")) {
+        name = nameMatch[1].trim();
+        working = nameMatch[2].trim();
+      }
+
+      const [patternPart, repeatPart] = working.split(/x/i).map((p) => p.trim());
       if (!patternPart || !repeatPart) {
         throw new Error("xN の形式で繰り返し年数を指定してください");
       }
@@ -42,13 +52,25 @@ export function parseDslToBlocks(dslText: string): { blocks: PeriodBlock[]; erro
         }
         return { months, flow: Math.trunc(flow) };
       });
-      blocks.push({ pattern, repeatYears });
+      blocks.push({ pattern, repeatYears, name });
     } catch (err) {
       errors.push(`${idx + 1} 行目: ${(err as Error).message}`);
     }
   });
 
   return { blocks, errors };
+}
+
+export function blocksToDsl(blocks: PeriodBlock[]): string {
+  return blocks
+    .map((block) => {
+      const namePrefix = block.name ? `${block.name}: ` : "";
+      const patternText = block.pattern
+        .map((period) => `(${period.months}, ${period.flow})`)
+        .join(", ");
+      return `${namePrefix}${patternText} x${block.repeatYears}`;
+    })
+    .join("\n");
 }
 
 // ブロックを平坦化して Period[] に変換

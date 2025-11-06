@@ -31,6 +31,7 @@ const BlocksEditor: React.FC<BlocksEditorProps> = ({ blocks, onChange }) => {
     onChange([
       ...blocks,
       {
+        name: "",
         repeatYears: 1,
         pattern: [
           {
@@ -44,6 +45,15 @@ const BlocksEditor: React.FC<BlocksEditorProps> = ({ blocks, onChange }) => {
 
   const removeBlock = (index: number) => {
     onChange(blocks.filter((_, i) => i !== index));
+  };
+
+  const moveBlock = (index: number, offset: number) => {
+    const target = index + offset;
+    if (target < 0 || target >= blocks.length) return;
+    const next = [...blocks];
+    const [removed] = next.splice(index, 1);
+    next.splice(target, 0, removed);
+    onChange(next);
   };
 
   const addPattern = (blockIndex: number) => {
@@ -73,11 +83,46 @@ const BlocksEditor: React.FC<BlocksEditorProps> = ({ blocks, onChange }) => {
         blocks.map((block, blockIndex) => (
           <div key={blockIndex} className="block-card">
             <div className="block-header">
-              <strong>ブロック {blockIndex + 1}</strong>
-              <button type="button" onClick={() => removeBlock(blockIndex)}>
-                削除
-              </button>
+              <div className="block-title">
+                <strong>ブロック {blockIndex + 1}</strong>
+                {block.name ? <span className="block-name-tag">{block.name}</span> : null}
+              </div>
+              <div className="block-actions">
+                <button
+                  type="button"
+                  onClick={() => moveBlock(blockIndex, -1)}
+                  disabled={blockIndex === 0}
+                  aria-label="上へ移動"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveBlock(blockIndex, 1)}
+                  disabled={blockIndex === blocks.length - 1}
+                  aria-label="下へ移動"
+                >
+                  ↓
+                </button>
+                <button type="button" onClick={() => removeBlock(blockIndex)}>
+                  削除
+                </button>
+              </div>
             </div>
+            <label className="field-inline">
+              <span>ブロック名</span>
+              <input
+                type="text"
+                value={block.name ?? ""}
+                placeholder="例: 積立期"
+                onChange={(e) =>
+                  updateBlock(blockIndex, (b) => ({
+                    ...b,
+                    name: e.target.value,
+                  }))
+                }
+              />
+            </label>
             <label className="field-inline">
               <span>繰り返し年数</span>
               <input
@@ -102,7 +147,12 @@ const BlocksEditor: React.FC<BlocksEditorProps> = ({ blocks, onChange }) => {
                       min={1}
                       value={period.months}
                       onChange={(e) =>
-                        updatePattern(blockIndex, patternIndex, "months", Math.max(1, Number(e.target.value) || 1))
+                        updatePattern(
+                          blockIndex,
+                          patternIndex,
+                          "months",
+                          Math.max(1, Number(e.target.value) || 1)
+                        )
                       }
                     />
                   </label>
@@ -112,7 +162,12 @@ const BlocksEditor: React.FC<BlocksEditorProps> = ({ blocks, onChange }) => {
                       type="number"
                       value={period.flow}
                       onChange={(e) =>
-                        updatePattern(blockIndex, patternIndex, "flow", Math.trunc(Number(e.target.value) || 0))
+                        updatePattern(
+                          blockIndex,
+                          patternIndex,
+                          "flow",
+                          Math.trunc(Number(e.target.value) || 0)
+                        )
                       }
                     />
                   </label>
