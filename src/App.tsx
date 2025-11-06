@@ -1,9 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ScenarioForm from "./components/ScenarioForm";
 import ResultTable from "./components/ResultTable";
 import ScenarioStore, { StoredScenario } from "./components/ScenarioStore";
-import { CalcResult, Scenario, calcAllRates, parseDslToBlocks } from "./lib/calcEngine";
-import { PeriodBlock } from "./lib/periods";
+import RateDetailModal from "./components/RateDetailModal";
+import {
+  CalcResult,
+  Scenario,
+  calcAllRates,
+  calcDetailForRate,
+  parseDslToBlocks,
+  RateDetail,
+} from "./lib/calcEngine";
+import { PeriodBlock, blocksToDsl } from "./lib/periods";
 import { parseRatesText } from "./lib/format";
 
 const STORAGE_KEY = "nisa-sim/scenarios";
@@ -39,6 +47,9 @@ const App: React.FC = () => {
   const [ratesValid, setRatesValid] = useState<boolean>(true);
   const [result, setResult] = useState<CalcResult | null>(null);
   const [savedScenarios, setSavedScenarios] = useState<StoredScenario[]>([]);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [currentDetail, setCurrentDetail] = useState<RateDetail | undefined>(undefined);
+  const [activeRates, setActiveRates] = useState<number[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -74,10 +85,13 @@ const App: React.FC = () => {
   };
 
   const handleBlocksChange = (blocks: PeriodBlock[]) => {
+    const dslText = blocksToDsl(blocks);
     setScenario((prev) => ({
       ...prev,
       blocks,
+      dslText,
     }));
+    setDslErrors([]);
   };
 
   const handleDslChange = (text: string, blocks: PeriodBlock[], errors: string[]) => {
@@ -94,6 +108,9 @@ const App: React.FC = () => {
     try {
       const nextResult = calcAllRates(scenario);
       setResult(nextResult);
+      setDetailOpen(false);
+      setCurrentDetail(undefined);
+      setActiveRates([]);
     } catch (err) {
       console.error(err);
     }
@@ -140,6 +157,9 @@ const App: React.FC = () => {
     setRatesValid(item.ratesPercent.length > 0);
     setDslErrors([]);
     setResult(null);
+    setDetailOpen(false);
+    setCurrentDetail(undefined);
+    setActiveRates([]);
   };
 
   const handleDelete = (id: string) => {
@@ -157,7 +177,31 @@ const App: React.FC = () => {
     saveScenarios([...savedScenarios, newScenario]);
   };
 
+  const handleOpenDetail = (ratePercent: number) => {
+    try {
+      const detailResult = calcDetailForRate(scenario, ratePercent);
+      setCurrentDetail(detailResult.detail);
+      setDetailOpen(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleSeries = (ratePercent: number, show: boolean) => {
+    setActiveRates((prev) => {
+      if (show) {
+        if (prev.includes(ratePercent)) return prev;
+        return [...prev, ratePercent];
+      }
+      return prev.filter((value) => value !== ratePercent);
+    });
+  };
+
   const canCalculate = isDslValid && hasRates;
+
+  const startYear = useMemo(() => parseScenarioStartYear(scenario.startYm), [scenario.startYm]);
+
+  const isSeriesActive = currentDetail ? activeRates.includes(currentDetail.ratePercent) : false;
 
   return (
     <div className="app">
@@ -187,12 +231,30 @@ const App: React.FC = () => {
           />
         </div>
         <div className="right">
-          <ResultTable result={result} />
+          <ResultTable result={result} onOpenDetail={handleOpenDetail} activeRates={activeRates} startYear={startYear} />
         </div>
       </div>
+      <RateDetailModal
+        open={detailOpen}
+        detail={currentDetail}
+        onClose={() => setDetailOpen(false)}
+        onToggleSeries={handleToggleSeries}
+        isSeriesActive={isSeriesActive}
+      />
     </div>
   );
 };
+
+function parseScenarioStartYear(startYm: string): number {
+  const match = startYm.match(/^(\d{4})/);
+  if (match) {
+    const year = Number(match[1]);
+    if (Number.isFinite(year)) {
+      return year;
+    }
+  }
+  return new Date().getFullYear();
+}
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

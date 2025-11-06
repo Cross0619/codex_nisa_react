@@ -12,10 +12,22 @@ export const ResultList: React.FC<ResultListProps> = ({ results, formatJPY }) =>
   }
 
   return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <ul
+      style={{
+        listStyle: "none",
+        padding: 0,
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      }}
+    >
       {results.map((result, index) => (
-        <li key={`${result.ratePercent}-${index}`} style={{ border: '1px solid #ccc', padding: '8px', borderRadius: '4px' }}>
-          <strong>{result.ratePercent}%</strong> → {formatJPY(result.finalTotal)}
+        <li
+          key={`${result.ratePercent}-${index}`}
+          style={{ border: "1px solid #ccc", padding: "8px", borderRadius: "4px" }}
+        >
+          <strong>{Math.round(result.ratePercent * 100)}%</strong> → {formatJPY(result.finalTotal)}
         </li>
       ))}
     </ul>

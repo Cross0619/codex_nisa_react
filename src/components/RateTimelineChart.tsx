@@ -4,14 +4,17 @@ import { formatYen } from "../lib/format";
 
 interface RateTimelineChartProps {
   row: RateRow;
+  startYear: number;
+  hidden?: boolean;
+  highlighted?: boolean;
 }
 
-const chartWidth = 720;
+const chartWidth = 760;
 const chartHeight = 240;
-const paddingX = 48;
+const paddingX = 68;
 const paddingY = 32;
 
-const RateTimelineChart: React.FC<RateTimelineChartProps> = ({ row }) => {
+const RateTimelineChart: React.FC<RateTimelineChartProps> = ({ row, startYear, hidden, highlighted }) => {
   const { pathPrincipal, pathProfit, minY, maxY, ticks, maxMonth } = useMemo(() => {
     const points = row.timeline;
     if (points.length === 0) {
@@ -76,16 +79,20 @@ const RateTimelineChart: React.FC<RateTimelineChartProps> = ({ row }) => {
     if (maxMonth <= 0) return [];
     const years = Math.ceil(maxMonth / 12);
     const step = Math.max(1, Math.floor(years / 6));
-    const labels: { year: number; monthIndex: number }[] = [];
-    for (let year = 0; year <= years; year += step) {
-      const monthIndex = Math.min(maxMonth, year * 12);
-      labels.push({ year, monthIndex });
+    const labels: { label: number; monthIndex: number }[] = [];
+    for (let yearOffset = 0; yearOffset <= years; yearOffset += step) {
+      const monthIndex = Math.min(maxMonth, yearOffset * 12);
+      labels.push({ label: startYear + yearOffset, monthIndex });
     }
     return labels;
-  }, [maxMonth]);
+  }, [maxMonth, startYear]);
+
+  if (hidden) {
+    return null;
+  }
 
   return (
-    <div className="rate-chart-card">
+    <div className={`rate-chart-card${highlighted ? " is-highlighted" : ""}`}>
       <header className="rate-chart-header">
         <h3>{formatRate(row.ratePercent)} の推移</h3>
         <div className="rate-chart-legend">
@@ -114,15 +121,19 @@ const RateTimelineChart: React.FC<RateTimelineChartProps> = ({ row }) => {
             return (
               <g key={`tick-${tick}`} className="chart-tick">
                 <line x1={paddingX} x2={chartWidth - paddingX} y1={y} y2={y} />
-                <text x={paddingX - 8} y={y + 4}>{formatYen(Math.round(tick))}</text>
+                <text x={paddingX - 12} y={y + 4}>
+                  {formatYen(Math.round(tick))}
+                </text>
               </g>
             );
           })}
           {yearLabels.map((label) => {
-            const x = paddingX + (maxMonth === 0 ? 0 : (label.monthIndex / maxMonth) * (chartWidth - paddingX * 2));
+            const x =
+              paddingX +
+              (maxMonth === 0 ? 0 : (label.monthIndex / maxMonth) * (chartWidth - paddingX * 2));
             return (
-              <text key={`year-${label.year}`} x={x} y={chartHeight - 4} className="chart-x-label">
-                {label.year}年
+              <text key={`year-${label.label}`} x={x} y={chartHeight - 4} className="chart-x-label">
+                {label.label}年
               </text>
             );
           })}
@@ -135,10 +146,12 @@ const RateTimelineChart: React.FC<RateTimelineChartProps> = ({ row }) => {
 };
 
 function formatRate(rateInput: number): string {
-  if (rateInput >= 1) {
-    return `${rateInput.toFixed(2)}%`;
-  }
-  return `${(rateInput * 100).toFixed(2)}%`;
+  const normalized = rowNormalize(rateInput);
+  return `${Math.round(normalized * 100)}%`;
+}
+
+function rowNormalize(rateInput: number): number {
+  return rateInput >= 1 ? rateInput / 100 : rateInput;
 }
 
 export default RateTimelineChart;
